@@ -446,13 +446,21 @@ void Parser::SerializeStruct(const StructDef &struct_def, const Value &val) {
 uoffset_t Parser::ParseTable(const StructDef &struct_def) {
   Expect('{');
   size_t fieldn = 0;
+  uint8_t bit = 0;
+  uint64_t set = 0;
   if (!IsNext('}')) for (;;) {
     std::string name = attribute_;
     if (!IsNext(kTokenStringConstant)) Expect(kTokenIdentifier);
     auto field = struct_def.fields.Lookup(name);
     if (!field) Error("unknown field: " + name);
-    if (struct_def.fixed && (fieldn >= struct_def.fields.vec.size()
-                            || struct_def.fields.vec[fieldn] != field)) {
+    if (!struct_def.fixed) {
+      // starts at offset 4
+      bit = 1 << ((field->value.offset - 4) >> 1);
+      if (0 != (set & bit))
+        Error("table field appearing more than once: " + name);
+      set |= bit;
+    } else if (fieldn >= struct_def.fields.vec.size()
+                            || struct_def.fields.vec[fieldn] != field) {
        Error("struct field appearing out of order: " + name);
     }
     Expect(':');
