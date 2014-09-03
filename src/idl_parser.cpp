@@ -446,7 +446,7 @@ void Parser::SerializeStruct(const StructDef &struct_def, const Value &val) {
 uoffset_t Parser::ParseTable(const StructDef &struct_def) {
   Expect('{');
   size_t fieldn = 0;
-  uint8_t bit = 0;
+  uint64_t bit = 0;
   uint64_t set = 0;
   if (!IsNext('}')) for (;;) {
     std::string name = attribute_;
