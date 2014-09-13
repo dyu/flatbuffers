@@ -269,6 +269,9 @@ class Parser {
   // filepath indicates the file that _source was loaded from, it is
   // used to resolve any include statements.
   bool Parse(const char *_source, const char *filepath);
+  
+  // Parse the string containing JSON data
+  bool ParseJson(const char *_source);
 
   // Set the root type. May override the one set in the schema.
   bool SetRootType(const char *name);

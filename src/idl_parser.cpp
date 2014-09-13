@@ -981,6 +981,36 @@ void Parser::MarkGenerated() {
   }
 }
 
+bool Parser::ParseJson(const char *source) {
+  if (*source != '{') {
+    error_ = "expected { as the first char from source";
+    return false;
+  }
+  if (!root_struct_def) {
+    error_ = "no root type set to parse json with";
+    return false;
+  }
+
+  bool success = true;
+  source_ = cursor_ = source;
+  line_ = 1;
+  error_.clear();
+  builder_.Clear();
+  try {
+    Next();
+    builder_.Finish(Offset<Table>(root_struct_def->sortbysize ? 
+                                  ParseSortedTable(*root_struct_def) : ParseTable(*root_struct_def)));
+  } catch (const std::string &msg) {
+    error_ = "line " + NumToString(line_) + ": " + msg;
+    success = false;
+  }
+  if (0 != struct_stack_.size()) {
+    struct_stack_.clear();
+    success = false;
+  }
+  return success;
+}
+
 bool Parser::Parse(const char *source, const char *filepath) {
   included_files_[filepath] = true;
   // This is the starting point to reset to if we interrupted our parsing
