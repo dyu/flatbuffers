@@ -889,7 +889,7 @@ void Parser::ParseDecl() {
   structs_.vec.back() = &struct_def;
   ParseMetaData(struct_def);
   struct_def.sortbysize =
-    struct_def.attributes.Lookup("original_order") == nullptr && !fixed;
+    !fixed && struct_def.attributes.Lookup("original_order") == nullptr;
   Expect('{');
   while (token_ != '}') ParseField(struct_def);
   auto force_align = struct_def.attributes.Lookup("force_align");
