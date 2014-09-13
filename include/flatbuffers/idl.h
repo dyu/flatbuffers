@@ -153,10 +153,8 @@ template<typename T> class SymbolTable {
     return it == dict.end() ? nullptr : it->second;
   }
 
- private:
-  std::map<std::string, T *> dict;      // quick lookup
-
  public:
+  std::map<std::string, T *> dict;      // quick lookup
   std::vector<T *> vec;  // Used to iterate in order of insertion
 };
 
