@@ -22,6 +22,7 @@
 #include <string>
 #include <sstream>
 #include <stdlib.h>
+#include <assert.h>
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -130,6 +131,18 @@ inline std::string StripPath(const std::string &filepath) {
 inline std::string StripFileName(const std::string &filepath) {
   size_t i = filepath.find_last_of(PathSeparatorSet);
   return i != std::string::npos ? filepath.substr(0, i) : "";
+}
+
+// Concatenates a path with a filename, regardless of wether the path
+// ends in a separator or not.
+inline std::string ConCatPathFileName(const std::string &path,
+                                      const std::string &filename) {
+  std::string filepath = path;
+  if (path.length() && path.back() != kPathSeparator &&
+                       path.back() != kPosixPathSeparator)
+    filepath += kPathSeparator;
+  filepath += filename;
+  return filepath;
 }
 
 // This function ensure a directory exists, by recursively

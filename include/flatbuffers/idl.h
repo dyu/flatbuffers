@@ -266,9 +266,12 @@ class Parser {
 
   // Parse the string containing either schema or JSON data, which will
   // populate the SymbolTable's or the FlatBufferBuilder above.
-  // filepath indicates the file that _source was loaded from, it is
-  // used to resolve any include statements.
-  bool Parse(const char *_source, const char *filepath);
+  // include_paths is used to resolve any include statements, and typically
+  // should at least include the project path (where you loaded source_ from).
+  // include_paths must be nullptr terminated if specified.
+  // If include_paths is nullptr, it will attempt to load from the current
+  // directory.
+  bool Parse(const char *_source, const char **include_paths = nullptr);
   
   // Parse the string containing JSON data
   bool ParseJson(const char *_source);
@@ -323,6 +326,7 @@ class Parser {
 
   std::vector<std::pair<Value, FieldDef *>> field_stack_;
   std::vector<uint8_t> struct_stack_;
+
   std::map<std::string, bool> included_files_;
 };
 
@@ -388,6 +392,14 @@ extern bool GenerateJava(const Parser &parser,
                          const std::string &path,
                          const std::string &file_name,
                          const GeneratorOptions &opts);
+
+// Generate C# files from the definitions in the Parser object.
+// See idl_gen_csharp.cpp.
+extern bool GenerateCSharp(const Parser &parser,
+                           const std::string &path,
+                           const std::string &file_name,
+                           const GeneratorOptions &opts);
+
 
 }  // namespace flatbuffers
 

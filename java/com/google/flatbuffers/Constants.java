@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package flatbuffers;
+package com.google.flatbuffers;
 
 // Class that holds shared constants.
 

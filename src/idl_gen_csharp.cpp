@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-// independent from idl_parser, since this code is not needed for most clients
-
 #include "flatbuffers/flatbuffers.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
 namespace flatbuffers {
-namespace java {
+namespace csharp {
 
 static std::string GenTypeBasic(const Type &type) {
   static const char *ctypename[] = {
@@ -37,7 +35,7 @@ static std::string GenTypeGet(const Type &type);
 static std::string GenTypePointer(const Type &type) {
   switch (type.base_type) {
     case BASE_TYPE_STRING:
-      return "String";
+      return "string";
     case BASE_TYPE_VECTOR:
       return GenTypeGet(type.VectorType());
     case BASE_TYPE_STRUCT:
@@ -60,27 +58,27 @@ static void GenComment(const std::string &dc,
                        const char *prefix = "") {
   std::string &code = *code_ptr;
   if (dc.length()) {
-    code += std::string(prefix) + "///" + dc + "\n";
+    code += std::string(prefix) + "/*" + dc + "*/\n";
   }
 }
+
 
 static void GenEnum(EnumDef &enum_def, std::string *code_ptr) {
   std::string &code = *code_ptr;
   if (enum_def.generated) return;
 
   // Generate enum definitions of the form:
-  // public static final int name = value;
-  // We use ints rather than the Java Enum feature, because we want them
+  // public static int Name = value;
+  // We use ints rather than the C# Enum feature, because we want them
   // to map directly to how they're used in C/C++ and file formats.
-  // That, and Java Enums are expensive, and not universally liked.
   GenComment(enum_def.doc_comment, code_ptr);
-  code += "public class " + enum_def.name + " {\n";
+  code += "public class " + enum_def.name + "\n{\n";
   for (auto it = enum_def.vals.vec.begin();
        it != enum_def.vals.vec.end();
        ++it) {
     auto &ev = **it;
     GenComment(ev.doc_comment, code_ptr, "  ");
-    code += "  public static final " + GenTypeBasic(enum_def.underlying_type);
+    code += "  public static " + GenTypeBasic(enum_def.underlying_type);
     code += " " + ev.name + " = ";
     code += NumToString(ev.value) + ";\n";
   }
@@ -95,17 +93,17 @@ static std::string GenGetter(const Type &type) {
     case BASE_TYPE_UNION: return "__union";
     case BASE_TYPE_VECTOR: return GenGetter(type.VectorType());
     default:
-      return "bb.get" + (SizeOf(type.base_type) > 1
+      return "bb.Get" + (SizeOf(type.base_type) > 1
         ? MakeCamel(GenTypeGet(type))
         : "");
   }
 }
 
 // Returns the method name for use with add/put calls.
-static std::string GenMethod(const Type &type) {
-  return IsScalar(type.base_type)
-    ? MakeCamel(GenTypeBasic(type))
-    : (IsStruct(type) ? "Struct" : "Offset");
+static std::string GenMethod(const FieldDef &field) {
+  return IsScalar(field.value.type.base_type)
+    ? MakeCamel(GenTypeBasic(field.value.type))
+    : (IsStruct(field.value.type) ? "Struct" : "Offset");
 }
 
 // Recursively generate arguments for a constructor, to deal with nested
@@ -125,31 +123,31 @@ static void GenStructArgs(const StructDef &struct_def, std::string *code_ptr,
                     (field.value.type.struct_def->name + "_").c_str());
     } else {
       code += ", " + GenTypeBasic(field.value.type) + " " + nameprefix;
-      code += MakeCamel(field.name, false);
+    code += MakeCamel(field.name, true);
     }
   }
 }
 
 // Recusively generate struct construction statements of the form:
-// builder.putType(name);
+// builder.PutType(name);
 // and insert manual padding.
 static void GenStructBody(const StructDef &struct_def, std::string *code_ptr,
                           const char *nameprefix) {
   std::string &code = *code_ptr;
-  code += "    builder.prep(" + NumToString(struct_def.minalign) + ", ";
-  code += NumToString(struct_def.bytesize) + ");\n";
+  code += "    builder.Prep(" + NumToString(struct_def.minalign) + ", ";
+  code +=  NumToString(struct_def.bytesize) + ");\n";
   for (auto it = struct_def.fields.vec.rbegin();
        it != struct_def.fields.vec.rend();
        ++it) {
     auto &field = **it;
     if (field.padding)
-      code += "    builder.pad(" + NumToString(field.padding) + ");\n";
+      code += "    builder.Pad(" + NumToString(field.padding) + ");\n";
     if (IsStruct(field.value.type)) {
       GenStructBody(*field.value.type.struct_def, code_ptr,
                     (field.value.type.struct_def->name + "_").c_str());
     } else {
-      code += "    builder.put" + GenMethod(field.value.type) + "(";
-      code += nameprefix + MakeCamel(field.name, false) + ");\n";
+      code += "    builder.Put" + GenMethod(field) + "(";
+      code += nameprefix + MakeCamel(field.name, true) + ");\n";
     }
   }
 }
@@ -160,30 +158,30 @@ static void GenStruct(const Parser &parser, StructDef &struct_def,
   std::string &code = *code_ptr;
 
   // Generate a struct accessor class, with methods of the form:
-  // public type name() { return bb.getType(i + offset); }
+  // public type Name() { return bb.GetType(i + offset); }
   // or for tables of the form:
-  // public type name() {
-  //   int o = __offset(offset); return o != 0 ? bb.getType(o + i) : default;
+  // public type Name() {
+  //   int o = __offset(offset); return o != 0 ? bb.GetType(o + i) : default;
   // }
   GenComment(struct_def.doc_comment, code_ptr);
-  code += "public class " + struct_def.name + " extends ";
+  code += "public class " + struct_def.name + " : ";
   code += struct_def.fixed ? "Struct" : "Table";
   code += " {\n";
   if (!struct_def.fixed) {
     // Generate a special accessor for the table that when used as the root
     // of a FlatBuffer
-    code += "  public static " + struct_def.name + " getRootAs";
+    code += "  public static " + struct_def.name + " GetRootAs";
     code += struct_def.name;
-    code += "(ByteBuffer _bb) { ";
-    code += "_bb.order(ByteOrder.LITTLE_ENDIAN); ";
+    code += "(ByteBuffer _bb, int offset) { ";
+    // Endian handled by .NET ByteBuffer impl
     code += "return (new " + struct_def.name;
-    code += "()).__init(_bb.getInt(_bb.position()) + _bb.position(), _bb); }\n";
+    code += "()).__init(_bb.GetInt(offset) + offset, _bb); }\n";
     if (parser.root_struct_def == &struct_def) {
       if (parser.file_identifier_.length()) {
         // Check if a buffer has the identifier.
-        code += "  public static boolean " + struct_def.name;
-        code += "BufferHasIdentifier(ByteBuffer _bb) { return ";
-        code += "__has_identifier(_bb, \"" + parser.file_identifier_;
+        code += "  public static bool " + struct_def.name;
+        code += "BufferHasIdentifier(ByteBuffer _bb, int offset) { return ";
+        code += "__has_identifier(_bb, offset, \"" + parser.file_identifier_;
         code += "\"); }\n";
       }
     }
@@ -201,18 +199,18 @@ static void GenStruct(const Parser &parser, StructDef &struct_def,
     GenComment(field.doc_comment, code_ptr, "  ");
     std::string type_name = GenTypeGet(field.value.type);
     std::string method_start = "  public " + type_name + " " +
-                               MakeCamel(field.name, false);
+                               MakeCamel(field.name, true);
     // Generate the accessors that don't do object reuse.
     if (field.value.type.base_type == BASE_TYPE_STRUCT) {
       // Calls the accessor that takes an accessor object with a new object.
-      code += method_start + "() { return " + MakeCamel(field.name, false);
+      code += method_start + "() { return " + MakeCamel(field.name, true);
       code += "(new ";
       code += type_name + "()); }\n";
     } else if (field.value.type.base_type == BASE_TYPE_VECTOR &&
                field.value.type.element == BASE_TYPE_STRUCT) {
       // Accessors for vectors of structs also take accessor objects, this
       // generates a variant without that argument.
-      code += method_start + "(int j) { return " + MakeCamel(field.name, false);
+      code += method_start + "(int j) { return " + MakeCamel(field.name, true);
       code += "(new ";
       code += type_name + "(), j); }\n";
     }
@@ -229,7 +227,9 @@ static void GenStruct(const Parser &parser, StructDef &struct_def,
         code += "(bb_pos + " + NumToString(field.value.offset) + ")";
       } else {
         code += offset_prefix + getter;
-        code += "(o + bb_pos) : " + field.value.constant;
+        code += "(o + bb_pos) : (";
+        code += type_name;
+        code += ")" + field.value.constant;
       }
     } else {
       switch (field.value.type.base_type) {
@@ -268,7 +268,7 @@ static void GenStruct(const Parser &parser, StructDef &struct_def,
             code += index;
           }
           code += ") : ";
-          code += IsScalar(field.value.type.element) ? "0" : "null";
+          code += IsScalar(field.value.type.element) ? "(" + type_name + ")0" : "null";
           break;
         }
         case BASE_TYPE_UNION:
@@ -281,81 +281,60 @@ static void GenStruct(const Parser &parser, StructDef &struct_def,
     }
     code += "; }\n";
     if (field.value.type.base_type == BASE_TYPE_VECTOR) {
-      code += "  public int " + MakeCamel(field.name, false) + "Length(";
+      code += "  public int " + MakeCamel(field.name, true) + "Length(";
       code += offset_prefix;
       code += "__vector_len(o) : 0; }\n";
-    }
-    if (field.value.type.base_type == BASE_TYPE_VECTOR ||
-        field.value.type.base_type == BASE_TYPE_STRING) {
-      code += "  public ByteBuffer " + MakeCamel(field.name, false);
-      code += "AsByteBuffer() { return __vector_as_bytebuffer(";
-      code += NumToString(field.value.offset) + ", ";
-      code += NumToString(field.value.type.base_type == BASE_TYPE_STRING ? 1 :
-                          InlineSize(field.value.type.VectorType()));
-      code += "); }\n";
     }
   }
   code += "\n";
   if (struct_def.fixed) {
     // create a struct constructor function
-    code += "  public static int create" + struct_def.name;
+    code += "  public static int Create" + struct_def.name;
     code += "(FlatBufferBuilder builder";
     GenStructArgs(struct_def, code_ptr, "");
     code += ") {\n";
     GenStructBody(struct_def, code_ptr, "");
-    code += "    return builder.offset();\n  }\n";
+    code += "    return builder.Offset;\n  }\n";
   } else {
     // Create a set of static methods that allow table construction,
     // of the form:
-    // public static void addName(FlatBufferBuilder builder, short name)
-    // { builder.addShort(id, name, default); }
-    code += "  public static void start" + struct_def.name;
-    code += "(FlatBufferBuilder builder) { builder.startObject(";
+    // public static void AddName(FlatBufferBuilder builder, short name)
+    // { builder.AddShort(id, name, default); }
+    code += "  public static void Start" + struct_def.name;
+    code += "(FlatBufferBuilder builder) { builder.StartObject(";
     code += NumToString(struct_def.fields.vec.size()) + "); }\n";
     for (auto it = struct_def.fields.vec.begin();
          it != struct_def.fields.vec.end();
          ++it) {
       auto &field = **it;
       if (field.deprecated) continue;
-      code += "  public static void add" + MakeCamel(field.name);
+      code += "  public static void Add" + MakeCamel(field.name);
       code += "(FlatBufferBuilder builder, " + GenTypeBasic(field.value.type);
       auto argname = MakeCamel(field.name, false);
       if (!IsScalar(field.value.type.base_type)) argname += "Offset";
-      code += " " + argname + ") { builder.add";
-      code += GenMethod(field.value.type) + "(";
+      code += " " + argname + ") { builder.Add";
+      code += GenMethod(field) + "(";
       code += NumToString(it - struct_def.fields.vec.begin()) + ", ";
       code += argname + ", " + field.value.constant;
       code += "); }\n";
       if (field.value.type.base_type == BASE_TYPE_VECTOR) {
+        code += "  public static void Start" + MakeCamel(field.name);
+        code += "Vector(FlatBufferBuilder builder, int numElems) ";
+        code += "{ builder.StartVector(";
         auto vector_type = field.value.type.VectorType();
         auto alignment = InlineAlignment(vector_type);
         auto elem_size = InlineSize(vector_type);
-        if (!IsStruct(vector_type)) {
-          // Generate a method to create a vector from a Java array.
-          code += "  public static int create" + MakeCamel(field.name);
-          code += "Vector(FlatBufferBuilder builder, ";
-          code += GenTypeBasic(vector_type) + "[] data) ";
-          code += "{ builder.startVector(";
-          code += NumToString(elem_size);
-          code += ", data.length, " + NumToString(alignment);
-          code += "); for (int i = data.length - 1; i >= 0; i--) builder.add";
-          code += GenMethod(vector_type);
-          code += "(data[i]); return builder.endVector(); }\n";
-        }
-        // Generate a method to start a vector, data to be added manually after.
-        code += "  public static void start" + MakeCamel(field.name);
-        code += "Vector(FlatBufferBuilder builder, int numElems) ";
-        code += "{ builder.startVector(";
         code += NumToString(elem_size);
         code += ", numElems, " + NumToString(alignment);
-        code += "); }\n";      }
+        code += "); }\n";
+      }
     }
-    code += "  public static int end" + struct_def.name;
-    code += "(FlatBufferBuilder builder) { return builder.endObject(); }\n";
+    code += "  public static int End" + struct_def.name;
+    code += "(FlatBufferBuilder builder) { return builder.EndObject(); }\n";
     if (parser.root_struct_def == &struct_def) {
-      code += "  public static void finish" + struct_def.name;
+      code += "  public static void Finish" + struct_def.name;
       code += "Buffer(FlatBufferBuilder builder, int offset) { ";
-      code += "builder.finish(offset";
+      code += "builder.Finish(offset";
       if (parser.file_identifier_.length())
         code += ", \"" + parser.file_identifier_ + "\"";
       code += "); }\n";
@@ -367,47 +346,45 @@ static void GenStruct(const Parser &parser, StructDef &struct_def,
 // Save out the generated code for a single Java class while adding
 // declaration boilerplate.
 static bool SaveClass(const Parser &parser, const Definition &def,
-                      const std::string &classcode, const std::string &path,
-                      bool needs_imports) {
+                      const std::string &classcode, const std::string &path) {
   if (!classcode.length()) return true;
 
-  std::string namespace_java;
+  std::string namespace_csharp;
   std::string namespace_dir = path;
   auto &namespaces = parser.namespaces_.back()->components;
   for (auto it = namespaces.begin(); it != namespaces.end(); ++it) {
-    if (namespace_java.length()) {
-      namespace_java += ".";
+    if (namespace_csharp.length()) {
+      namespace_csharp += ".";
       namespace_dir += kPathSeparator;
     }
-    namespace_java += *it;
+    namespace_csharp += *it;
     namespace_dir += *it;
   }
   EnsureDirExists(namespace_dir);
 
   std::string code = "// automatically generated, do not modify\n\n";
-  code += "package " + namespace_java + ";\n\n";
-  if (needs_imports) {
-    code += "import java.nio.*;\nimport java.lang.*;\nimport java.util.*;\n";
-    code += "import com.google.flatbuffers.*;\n\n";
-  }
+  code += "namespace " + namespace_csharp + "\n{\n\n";
+// Other usings
+  code += "using FlatBuffers;\n\n";
   code += classcode;
-  auto filename = namespace_dir + kPathSeparator + def.name + ".java";
+  code += "\n}\n";
+  auto filename = namespace_dir + kPathSeparator + def.name + ".cs";
   return SaveFile(filename.c_str(), code, false);
 }
 
-}  // namespace java
+}  // namespace csharp
 
-bool GenerateJava(const Parser &parser,
-                  const std::string &path,
-                  const std::string & /*file_name*/,
-                  const GeneratorOptions & /*opts*/) {
-  using namespace java;
+bool GenerateCSharp(const Parser &parser,
+                    const std::string &path,
+                    const std::string & /*file_name*/,
+                    const GeneratorOptions & /*opts*/) {
+  using namespace csharp;
 
   for (auto it = parser.enums_.vec.begin();
        it != parser.enums_.vec.end(); ++it) {
     std::string enumcode;
     GenEnum(**it, &enumcode);
-    if (!SaveClass(parser, **it, enumcode, path, false))
+    if (!SaveClass(parser, **it, enumcode, path))
       return false;
   }
 
@@ -415,7 +392,7 @@ bool GenerateJava(const Parser &parser,
        it != parser.structs_.vec.end(); ++it) {
     std::string declcode;
     GenStruct(parser, **it, &declcode);
-    if (!SaveClass(parser, **it, declcode, path, true))
+    if (!SaveClass(parser, **it, declcode, path))
       return false;
   }
 
@@ -423,3 +400,4 @@ bool GenerateJava(const Parser &parser,
 }
 
 }  // namespace flatbuffers
+
